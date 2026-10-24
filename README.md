@@ -1,77 +1,159 @@
-# DevSync AI — GitHub + AI collaboration workspace
 
-A React + Express starter for a developer SaaS that brings together GitHub repositories, pull requests, AI review summaries, meeting notes, and tasks.
+# 🚀 DevPilot AI
 
-## Included in this milestone
-- GitHub OAuth sign-in with OAuth `state` validation
-- Fetch repositories for the signed-in GitHub user
-- List open pull requests and inspect PR file patches
-- AI review of PR diffs (findings, severity, evidence, fixes, test suggestions)
-- MongoDB persistence for meetings and tasks, scoped to GitHub user ID
-- Meeting-note AI summarization
-- Create GitHub issues only after explicit UI confirmation
-- Mongo-backed Express sessions when `MONGODB_URI` is configured
-- Basic Helmet security headers and API rate limiting
+### Your AI-Powered Engineering Workspace
 
-## Requirements
-- Node.js 20+
-- MongoDB local instance or MongoDB Atlas connection string
-- GitHub OAuth App credentials
-- Gemini API key for AI summaries and PR reviews
+DevPilot AI is an AI-powered engineering workspace that brings GitHub integration, code assistance, pull request management, meeting summaries, and team task tracking into one unified platform.
 
-## Local setup
-1. Copy `backend/.env.example` to `backend/.env` and fill the values.
-2. Run from the project root:
-   ```bash
-   npm install
-   npm install --prefix backend
-   npm install --prefix frontend
-   npm run dev
-   ```
-3. Open `http://localhost:5173`.
+## ✨ Features
 
-## Environment variables
-- `MONGODB_URI`: MongoDB connection string; required for meetings/tasks and persistent sessions.
-- `SESSION_SECRET`: generate a long random value; do not use the development fallback in production.
-- `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_CALLBACK_URL`: OAuth app settings.
-- `GEMINI_API_KEY`, `GEMINI_MODEL`: AI provider configuration.
-- `FRONTEND_URL`: exact frontend origin; no trailing slash.
-- `NODE_ENV=production` enables secure cookies.
+- 🤖 **AI Code Assistant** — Ask questions about selected files from your GitHub repositories.
+- 🐙 **GitHub Integration** — Connect your GitHub account and browse repositories and source files.
+- 🔀 **Pull Request Management** — View pull requests and inspect their details and changed files.
+- 📝 **Meeting Summaries** — Summarize meeting notes, capture decisions, and identify action items.
+- ✅ **Team Task Management** — Create, track, and manage development tasks.
+- 🔗 **Issue Creation** — Create GitHub issues from your workspace with confirmation.
+- 🎨 **Modern Dashboard** — A responsive engineering workspace designed for developer productivity.
 
-## GitHub OAuth
-Create an OAuth App in GitHub Developer Settings.
-- Homepage: `http://localhost:5173`
-- Callback: `http://localhost:5000/api/auth/github/callback`
+## 🛠️ Tech Stack
 
-The starter uses OAuth scope `repo`, which can grant access to private repositories. For production, consider a GitHub App with least-privilege permissions and make the access purpose clear to users. Do not log access tokens or send private code to an AI service without user consent.
+**Frontend**
+- React
+- Vite
+- JavaScript
+- CSS
 
-## API routes
-- `GET /api/health`
-- `GET /api/auth/github`, `GET /api/auth/github/callback`, `GET /api/auth/me`, `POST /api/auth/logout`
-- `GET /api/github/repos`
-- `GET /api/github/repos/:owner/:repo/pulls`
-- `GET /api/github/repos/:owner/:repo/pulls/:number`
-- `POST /api/github/repos/:owner/:repo/pulls/:number/review`
-- `POST /api/github/repos/:owner/:repo/issues` — requires `{ "confirmed": true, "title": "...", "body": "..." }`
-- `POST /api/ai/summarize` — `{ "text": "...", "kind": "meeting" | "code" }`
-- `GET/POST /api/meetings`, `PUT/DELETE /api/meetings/:id`
-- `GET/POST /api/tasks`, `PATCH/DELETE /api/tasks/:id`
+**Backend**
+- Node.js
+- Express.js
+- GitHub REST API
+- OpenRouter AI API
 
-## Production checklist — do this before public launch
-This code is a working development starter, not a complete security-reviewed SaaS. Before exposing it publicly:
-- Ensure `SESSION_SECRET` is a strong random secret and remove all development fallbacks.
-- Keep `MONGODB_URI` configured so sessions are not stored in Express MemoryStore.
-- Add CSRF protection appropriate to your OAuth/session architecture, robust schema validation, audit logs, and monitoring.
-- Encrypt/restrict access to OAuth tokens at rest; implement token revocation and disconnect cleanup.
-- Prefer GitHub App installation tokens with narrowly scoped permissions for production.
-- Add per-user and per-organization authorization, billing/quotas, AI cost limits, and retention controls.
-- Validate ownership/access for every repository operation and carefully review GitHub API permissions.
-- Add tests, error tracking, and deployment-specific cookie/CORS checks.
-- Provide clear consent before sending private repository diffs to the configured AI provider.
-- Add pagination/background jobs/webhook signature verification for larger teams.
+**Integrations**
+- GitHub OAuth
+- GitHub Repositories and Pull Requests
+- AI-powered code assistance and summarization
 
-## Deployment notes
-The frontend can be deployed to Vercel (`frontend` root directory, build `npm run build`, output `dist`). Deploy the Express backend to a host that supports a persistent Node process and configure MongoDB there. Set frontend `VITE_API_URL` to the backend URL and update `FRONTEND_URL` and `GITHUB_CALLBACK_URL` to exact production URLs. If using cross-site cookies, configure `SameSite=None; Secure`, CSRF protection, and CORS for your exact origin rather than using wildcard CORS.
+## 📁 Project Structure
 
-## UI update
-The frontend now opens with an enterprise-style DevSync AI welcome page. Select **Get started** to enter the workspace, or **Connect GitHub** to begin OAuth. The welcome choice is remembered in the browser so the OAuth redirect returns to the workspace instead of showing the intro again. The overview's GitHub issue composer is now scoped to the Overview page rather than appearing on every workspace screen.
+```text
+DevPilot-AI/
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   ├── package.json
+│   └── vite.config.js
+├── backend/
+│   ├── server.js
+│   ├── package.json
+│   └── .env
+├── .gitignore
+└── README.md
+```
+
+*Update the structure above to match your actual repository folders.*
+
+## ⚙️ Getting Started
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/YOUR_USERNAME/DevPilot-AI.git
+cd DevPilot-AI
+```
+
+### 2. Install Dependencies
+
+Install frontend dependencies:
+
+```bash
+cd frontend
+npm install
+```
+
+Install backend dependencies:
+
+```bash
+cd ../backend
+npm install
+```
+
+### 3. Configure Environment Variables
+
+Create a `.env` file in the backend directory.
+
+```env
+PORT=5000
+FRONTEND_URL=http://localhost:5173
+
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+
+OPENROUTER_API_KEY=your_openrouter_api_key
+SESSION_SECRET=your_secure_random_secret
+```
+
+Configure any additional variables required by your backend code. Never commit real API keys, OAuth secrets, or session secrets to GitHub.
+
+### 4. Configure GitHub OAuth
+
+1. Open GitHub Settings.
+2. Navigate to Developer settings → OAuth Apps.
+3. Create an OAuth application.
+4. Set the homepage URL to your frontend URL.
+5. Set the authorization callback URL to the callback endpoint configured in your backend.
+6. Add the generated credentials to your backend `.env` file.
+
+### 5. Start the Backend
+
+```bash
+cd backend
+npm run dev
+```
+
+### 6. Start the Frontend
+
+In a separate terminal:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open the local URL displayed by Vite, usually:
+
+http://localhost:5173
+
+## 🔐 Security
+
+- Keep environment variables and API credentials private.
+- Use secure session cookies in production.
+- Configure allowed frontend origins explicitly.
+- Grant only the GitHub permissions the application needs.
+- Never expose GitHub OAuth client secrets in frontend code.
+
+## 🗺️ Roadmap
+
+- [ ] Improve AI code assistance and response formatting
+- [ ] Enhance repository file browsing
+- [ ] Expand meeting-to-task workflows
+- [ ] Improve task organization and progress tracking
+- [ ] Strengthen automated testing and error handling
+- [ ] Refine production deployment and security
+
+## 🤝 Contributing
+
+Contributions, ideas, and bug reports are welcome.
+
+1. Fork the repository.
+2. Create a feature branch.
+3. Commit your changes.
+4. Open a pull request describing your improvements.
+
+## 📄 License
+
+Choose a license for your project before distributing it. For open-source projects, consider the MIT License if its terms fit your needs.
+
+---
+
+**Built to help developers code, collaborate, and ship with confidence.** ⚡
