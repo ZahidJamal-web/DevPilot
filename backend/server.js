@@ -27,9 +27,9 @@ app.use(helmet());
 
 const allowedOrigins = [
   "http://localhost:5173",
-  "http://localhost:3000",
-  "https://nexuscrm-backend.vercel.app",
-  "https://nexuscrm-workspace.vercel.app",
+  "http://localhost:5000",
+  "https://devpilot-dev.vercel.app",
+  "https://devpilot-backend.vercel.app",
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
