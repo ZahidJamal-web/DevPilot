@@ -1432,23 +1432,28 @@ app.use((err, req, res, next) => {
 // START SERVER
 // --------------------------------------------------
 
-async function start() {
-  if (process.env.MONGODB_URI) {
-    try {
-      await mongoose.connect(process.env.MONGODB_URI);
-      console.log("MongoDB connected");
-    } catch (err) {
-      console.error("MongoDB connection failed:", err.message);
-    }
-  } else {
-    console.warn(
-      "MONGODB_URI is not set. Meetings and tasks require MongoDB."
-    );
+async function connectDatabase() {
+  if (!process.env.MONGODB_URI) {
+    console.warn("MONGODB_URI is not set. Meetings and tasks require MongoDB.");
+    return;
   }
 
-  app.listen(PORT, () => {
-    console.log(`DevPilot API running on port ${PORT}`);
-  });
+  if (mongoose.connection.readyState === 1) return;
+
+  await mongoose.connect(process.env.MONGODB_URI);
+  console.log("MongoDB connected");
 }
 
-start();
+if (!process.env.VERCEL) {
+  connectDatabase()
+    .catch((err) => {
+      console.error("MongoDB connection failed:", err.message);
+    })
+    .finally(() => {
+      app.listen(PORT, () => {
+        console.log(`DevPilot API running on port ${PORT}`);
+      });
+    });
+}
+
+export default app;
