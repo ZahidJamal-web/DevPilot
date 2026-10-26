@@ -23,13 +23,10 @@ const mongoReady = Boolean(process.env.MONGODB_URI);
 
 app.set("trust proxy", 1);
 
-
 app.use(
   session({
     name: "devpilot.sid",
-    secret:
-      process.env.SESSION_SECRET ||
-      "local-dev-only-change-this-secret",
+    secret: process.env.SESSION_SECRET || "local-dev-only-change-this-secret",
     resave: false,
     saveUninitialized: false,
     store: mongoReady
@@ -542,69 +539,74 @@ app.get("/api/health", (_req, res) => {
 // --------------------------------------------------
 // GITHUB OAUTH
 // --------------------------------------------------
-app.get("/api/auth/github", (req, res) => {
-  const state = crypto.randomBytes(32).toString("hex");
 
+// Start GitHub sign-in
+app.get("/api/auth/github", (req, res, next) => {
+  const clientId = process.env.GITHUB_CLIENT_ID?.trim();
+  const callbackUrl = process.env.GITHUB_CALLBACK_URL?.trim();
+
+  if (!clientId || !callbackUrl) {
+    return res.status(500).json({
+      success: false,
+      message: "GitHub OAuth configuration is incomplete.",
+    });
+  }
+
+  const state = crypto.randomBytes(32).toString("hex");
   req.session.oauthState = state;
 
   req.session.save((err) => {
     if (err) {
-      console.error("Failed to save OAuth state:", err.message);
-      return res.status(500).send("Could not start GitHub sign-in.");
+      console.error("Failed to save OAuth session:", err.message);
+      return next(err);
     }
 
     const params = new URLSearchParams({
-      client_id: process.env.GITHUB_CLIENT_ID,
-      redirect_uri: process.env.GITHUB_CALLBACK_URL,
+      client_id: clientId,
+      redirect_uri: callbackUrl,
       scope: "read:user user:email repo",
       state,
     });
 
-    res.redirect(
+    return res.redirect(
       `https://github.com/login/oauth/authorize?${params.toString()}`
     );
   });
 });
 
+// GitHub OAuth callback
 app.get(
   "/api/auth/github/callback",
   asyncRoute(async (req, res) => {
-    const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173")
+    const frontendUrl = (
+      process.env.FRONTEND_URL || "http://localhost:5173"
+    )
       .split(",")[0]
       .trim()
       .replace(/\/$/, "");
 
-    console.log("OAuth state check:", {
-    receivedState: Boolean(req.query.state),
-    savedState: Boolean(req.session?.oauthState),
-    matches: req.query.state === req.session?.oauthState,
-    sessionId: req.sessionID,
-  });
-
     const { code, state, error } = req.query;
 
     if (error) {
+      console.error("GitHub OAuth denied:", String(error));
+
       return res.redirect(
         `${frontendUrl}/?authError=${encodeURIComponent(String(error))}`
       );
     }
 
+    // Validate OAuth state to prevent CSRF
     if (
-      !code ||
-      !state ||
+      typeof code !== "string" ||
+      typeof state !== "string" ||
       !req.session?.oauthState ||
       state !== req.session.oauthState
     ) {
-      console.error("OAuth state mismatch:", {
-        received: Boolean(state),
-        saved: Boolean(req.session?.oauthState),
-        matches: state === req.session?.oauthState,
-        sessionId: req.sessionID,
-      });
+      console.error("GitHub OAuth state validation failed.");
 
-      return res
-        .status(400)
-        .send("Invalid OAuth state. Please restart GitHub sign-in.");
+      return res.status(400).send(
+        "Invalid OAuth state. Please restart GitHub sign-in."
+      );
     }
 
     delete req.session.oauthState;
@@ -619,9 +621,13 @@ app.get(
 
     if (!clientId || !clientSecret || !callbackUrl) {
       console.error("GitHub OAuth configuration is incomplete.");
-      return res.status(500).send("GitHub OAuth is not configured correctly.");
+
+      return res.status(500).send(
+        "GitHub OAuth is not configured correctly."
+      );
     }
 
+    // Exchange the temporary OAuth code for an access token
     const tokenResponse = await fetch(
       "https://github.com/login/oauth/access_token",
       {
@@ -633,7 +639,7 @@ app.get(
         body: new URLSearchParams({
           client_id: clientId,
           client_secret: clientSecret,
-          code: String(code),
+          code,
           redirect_uri: callbackUrl,
         }),
         signal: AbortSignal.timeout(20000),
@@ -642,40 +648,46 @@ app.get(
 
     const tokenData = await tokenResponse.json();
 
-    console.log("OAuth diagnostic:", {
-    status: tokenResponse.status,
-    hasToken: Boolean(tokenData.access_token),
-    tokenPrefix: tokenData.access_token?.slice(0, 4),
-    tokenLength: tokenData.access_token?.length,
-    tokenType: tokenData.token_type,
-    scope: tokenData.scope,
-    error: tokenData.error,
-    errorDescription: tokenData.error_description,
-  });
+    // Never log the actual access token or client secret
+    console.log("GitHub token exchange:", {
+      status: tokenResponse.status,
+      hasToken: Boolean(tokenData.access_token),
+      error: tokenData.error || null,
+      errorDescription: tokenData.error_description || null,
+    });
 
-    if (!tokenResponse.ok || !tokenData.access_token || tokenData.error) {
+    if (
+      !tokenResponse.ok ||
+      !tokenData.access_token ||
+      tokenData.error
+    ) {
       return res.redirect(
         `${frontendUrl}/?authError=github_token_exchange_failed`
       );
     }
 
-    const verifyResponse = await fetch("https://api.github.com/user", {
-      headers: {
-        Authorization: `Bearer ${tokenData.access_token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      signal: AbortSignal.timeout(20000),
-    });
+    const accessToken = tokenData.access_token;
 
-    console.log("Fresh token verification:", {
-      status: verifyResponse.status,
-      valid: verifyResponse.ok,
-    });
+    // Verify the newly issued token before saving it
+    const verifyResponse = await fetch(
+      "https://api.github.com/user",
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        signal: AbortSignal.timeout(20000),
+      }
+    );
 
     if (!verifyResponse.ok) {
       const details = await verifyResponse.json().catch(() => ({}));
-      console.error("Fresh token rejected:", details.message);
+
+      console.error("GitHub token verification failed:", {
+        status: verifyResponse.status,
+        message: details.message || "Unknown GitHub API error",
+      });
 
       return res.redirect(
         `${frontendUrl}/?authError=github_token_invalid`
@@ -684,7 +696,8 @@ app.get(
 
     const user = await verifyResponse.json();
 
-    req.session.githubToken = tokenData.access_token;
+    // Store the verified token and profile in the session
+    req.session.githubToken = accessToken;
     req.session.githubUser = {
       id: String(user.id),
       login: user.login,
@@ -694,16 +707,16 @@ app.get(
     };
 
     await new Promise((resolve, reject) => {
-      req.session.save((err) => {
-        if (err) reject(err);
-        else resolve();
-      });
+      req.session.save((err) => (err ? reject(err) : resolve()));
     });
+
+    console.log("GitHub connected successfully:", user.login);
 
     return res.redirect(frontendUrl);
   })
 );
 
+// Check whether the current session has a valid GitHub token
 app.get("/api/auth/github/check", async (req, res) => {
   try {
     const token = req.session?.githubToken;
@@ -711,7 +724,7 @@ app.get("/api/auth/github/check", async (req, res) => {
     if (!token) {
       return res.status(401).json({
         valid: false,
-        message: "No GitHub token in session",
+        message: "No GitHub token in session. Connect GitHub again.",
       });
     }
 
@@ -721,75 +734,100 @@ app.get("/api/auth/github/check", async (req, res) => {
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
       },
+      signal: AbortSignal.timeout(15000),
     });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
 
-    return res.status(response.ok ? 200 : 401).json({
-      valid: response.ok,
+    if (!response.ok) {
+      return res.status(response.status === 401 ? 401 : 502).json({
+        valid: false,
+        status: response.status,
+        message: data.message || "GitHub token verification failed.",
+      });
+    }
+
+    return res.json({
+      valid: true,
       status: response.status,
-      login: response.ok ? data.login : undefined,
-      message: response.ok ? "GitHub token is valid" : data.message,
+      login: data.login,
+      message: "GitHub token is valid.",
     });
-  } catch (error) {
+  } catch (err) {
+    console.error("GitHub token check failed:", err.message);
+
     return res.status(500).json({
       valid: false,
-      message: error.message,
+      message: "Could not verify the GitHub token.",
     });
   }
 });
 
+// Return the GitHub user stored in the session
 app.get("/api/auth/me", (req, res) => {
-  res.json({
-    user: req.session.githubUser || null,
-    debug: {
-      sessionExists: Boolean(req.session),
-      githubUserPresent: Boolean(req.session?.githubUser),
-      githubTokenPresent: Boolean(req.session?.githubToken),
-    },
+  return res.json({
+    user: req.session?.githubUser || null,
+    connected: Boolean(
+      req.session?.githubUser && req.session?.githubToken
+    ),
   });
 });
 
+// Disconnect GitHub
 app.post("/api/auth/logout", (req, res, next) => {
-  req.session.destroy((error) => {
-    if (error) return next(error);
+  if (!req.session) {
+    return res.json({ ok: true });
+  }
+
+  req.session.destroy((err) => {
+    if (err) return next(err);
 
     res.clearCookie("devpilot.sid", {
       httpOnly: true,
       secure: isProduction,
       sameSite: isProduction ? "none" : "lax",
+      path: "/",
     });
 
-    res.json({ ok: true });
+    return res.json({ ok: true });
   });
 });
 
-// --------------------------------------------------
-// GITHUB REPOSITORIES
-// --------------------------------------------------
+
+/* --------------------------------------------------
+   GITHUB REPOSITORIES
+-------------------------------------------------- */
 
 app.get(
   "/api/github/repos",
   asyncRoute(async (req, res) => {
-    console.log("GitHub repositories session:", {
-      sessionExists: Boolean(req.session),
-      githubUserPresent: Boolean(req.session?.githubUser),
-      githubTokenPresent: Boolean(req.session?.githubToken),
-    });
+    const token = req.session?.githubToken;
 
-    if (!requireGitHub(req, res)) return;
+    if (!token || !req.session?.githubUser) {
+      return res.status(401).json({
+        success: false,
+        message: "GitHub is not connected. Connect GitHub again.",
+      });
+    }
 
     const data = await githubFetch(
       req,
       "/user/repos?sort=updated&per_page=100&affiliation=owner,collaborator,organization_member"
     );
 
-    res.json(
+    if (!Array.isArray(data)) {
+      return res.status(502).json({
+        success: false,
+        message: "GitHub returned an unexpected repository response.",
+      });
+    }
+
+    return res.json(
       data.map((repo) => ({
         id: repo.id,
         name: repo.name,
         full_name: repo.full_name,
-        owner: repo.owner.login,
+        owner: repo.owner?.login,
         description: repo.description,
         private: repo.private,
         html_url: repo.html_url,
