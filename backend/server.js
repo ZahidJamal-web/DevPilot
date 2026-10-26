@@ -27,24 +27,29 @@ app.set("trust proxy", 1);
 app.use(helmet());
 
 const allowedOrigins = [
-  "http://localhost:5173",
-  "https://devpilot-dev.vercel.app",
+  ...new Set([
+    ...FRONTEND_ORIGINS,
+    "http://localhost:5173",
+    "https://devpilot-dev.vercel.app",
+  ]),
 ];
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
 
-      return callback(new Error(`CORS blocked origin: ${origin}`));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+    console.warn("CORS blocked origin:", origin);
+    return callback(new Error("Origin not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 
 app.options(/.*/, cors());
 
