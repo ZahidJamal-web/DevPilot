@@ -630,6 +630,13 @@ app.get(
       );
     }
 
+    // DEBUG LOGS
+    console.log("Session ID cookie received:", req.cookies || req.sessionID);
+    console.log("Session object:", req.session);
+    console.log("Query state:", state);
+    console.log("Session oauthState:", req.session?.oauthState);
+
+    // Validate OAuth state to prevent CSRF
     if (
       typeof code !== "string" ||
       typeof state !== "string" ||

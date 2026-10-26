@@ -16,20 +16,20 @@ const enc = (value) => encodeURIComponent(value);
 async function request(path, options = {}) {
   let response;
 
-  try {
-    response = await fetch(`${API}${path}`, {
-      credentials: "include",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {}),
-      },
-    });
-  } catch {
-    throw new Error(
-      `Cannot connect to backend at ${API}. Check that the server is running.`
-    );
-  }
+ try {
+  response = await fetch(`${API}${path}`, {
+    credentials: "include",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}), // Allows custom headers to override or add to defaults
+    },
+  });
+} catch {
+  throw new Error(
+    `Cannot connect to backend at ${API}. Check that the server is running.`
+  );
+}
 
   const data = await response.json().catch(() => ({}));
 
