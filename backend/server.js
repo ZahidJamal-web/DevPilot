@@ -546,6 +546,11 @@ app.get(
 
     const state = crypto.randomBytes(32).toString("hex");
     req.session.oauthState = state;
+    console.log("OAuth start:", {
+    callbackUrl: process.env.GITHUB_CALLBACK_URL,
+    hasSession: Boolean(req.session),
+    hasState: Boolean(req.session.oauthState),
+  });
 
     // Persist the session before leaving your application.
     await new Promise((resolve, reject) => {
@@ -572,6 +577,14 @@ app.get(
   "/api/auth/github/callback",
   asyncRoute(async (req, res) => {
     const { code, state, error } = req.query;
+    console.log("OAuth callback:", {
+    hasCode: Boolean(code),
+    hasQueryState: Boolean(state),
+    hasSession: Boolean(req.session),
+    hasStoredState: Boolean(req.session.oauthState),
+    stateMatches:
+      Boolean(state) && state === req.session.oauthState,
+  });
 
     if (error) {
       return res.redirect(
