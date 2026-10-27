@@ -71,9 +71,6 @@ app.use(async (req, res, next) => {
 // SESSION CONFIGURATION
 // --------------------------------------------------
 
-
-const isProduction = process.env.NODE_ENV === "production";
-
 app.use(
   session({
     name: "devpilot.sid",
