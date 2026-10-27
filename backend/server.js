@@ -71,6 +71,9 @@ app.use(async (req, res, next) => {
 // SESSION CONFIGURATION
 // --------------------------------------------------
 
+
+const isProduction = process.env.NODE_ENV === "production";
+
 app.use(
   session({
     name: "devpilot.sid",
@@ -86,8 +89,8 @@ app.use(
       : undefined,
     cookie: {
       httpOnly: true,
-      secure: false,
-      sameSite: "lax",
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
       path: "/",
       maxAge: 1000 * 60 * 60 * 8,
     },
