@@ -104,6 +104,7 @@ const allowedOrigins = [
   "http://127.0.0.1:3000",
   "http://localhost:5000",
   "https://devpilot-dev.vercel.app",
+  "https://devpilot-backend.vercel.app"
 ].filter((origin, index, all) => all.indexOf(origin) === index);
 
 const corsOptions = {
@@ -580,9 +581,20 @@ async function loadCodeContext(req, owner, repo, path) {
   };
 }
 
+
+app.get("/", (req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: "DevPilot API",
+    message: "Backend is running",
+    health: "/api/health",
+  });
+});
+
 // --------------------------------------------------
 // HEALTH
 // --------------------------------------------------
+
 
 app.get("/api/health", (_req, res) => {
   res.json({
