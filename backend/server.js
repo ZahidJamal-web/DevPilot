@@ -836,6 +836,14 @@ app.get("/api/auth/github/check", async (req, res) => {
 });
 
 app.get("/api/auth/me", (req, res) => {
+  console.log("Auth session diagnostic:", {
+    hasSession: Boolean(req.session),
+    hasSessionId: Boolean(req.sessionID),
+    hasGitHubUser: Boolean(req.session?.githubUser),
+    hasGitHubToken: Boolean(req.session?.githubToken),
+    hasCookie: Boolean(req.headers.cookie?.includes("devpilot.sid")),
+  });
+
   return res.json({
     user: req.session?.githubUser || null,
     connected: Boolean(
