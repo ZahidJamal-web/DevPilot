@@ -14,6 +14,7 @@ dns.setServers(["1.1.1.1", "8.8.8.8"]);
 const app = express();
 const PORT = process.env.PORT || 5000;
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
 const FRONTEND_ORIGINS = FRONTEND_URL.split(",")
   .map((url) => url.trim().replace(/\/$/, ""))
   .filter(Boolean);
@@ -21,11 +22,17 @@ const FRONTEND_ORIGINS = FRONTEND_URL.split(",")
 const isProduction = process.env.NODE_ENV === "production";
 const mongoUri = process.env.MONGODB_URI;
 
+// Local default for development; production must set GITHUB_CALLBACK_URL explicitly.
+const GITHUB_CALLBACK_URL =
+  process.env.GITHUB_CALLBACK_URL?.trim() ||
+  (isProduction ? "" : "http://localhost:5000/api/auth/github/callback");
+
 app.set("trust proxy", 1);
 
 // --------------------------------------------------
 // MONGODB CONNECTION CACHING FOR SERVERLESS
 // --------------------------------------------------
+
 let cachedDbPromise = null;
 
 async function connectToDatabase() {
@@ -43,7 +50,7 @@ async function connectToDatabase() {
   if (cachedDbPromise) {
     await cachedDbPromise;
   }
-  
+
   return mongoose.connection;
 }
 
@@ -56,18 +63,18 @@ app.use(async (req, res, next) => {
       console.error("MongoDB connection error on request:", err.message);
     }
   }
+
   next();
 });
 
 // --------------------------------------------------
 // SESSION CONFIGURATION
 // --------------------------------------------------
+
 app.use(
   session({
     name: "devpilot.sid",
-    secret:
-      process.env.SESSION_SECRET ||
-      "local-dev-only-change-this-secret",
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     store: mongoUri
@@ -75,13 +82,13 @@ app.use(
           mongoUrl: mongoUri,
           collectionName: "sessions",
           ttl: 14 * 24 * 60 * 60,
-          autoRemove: "native",
         })
       : undefined,
     cookie: {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
+      secure: false,
+      sameSite: "lax",
+      path: "/",
       maxAge: 1000 * 60 * 60 * 8,
     },
   })
@@ -90,11 +97,14 @@ app.use(
 app.use(helmet());
 
 const allowedOrigins = [
+  ...FRONTEND_ORIGINS,
   "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
   "http://localhost:5000",
   "https://devpilot-dev.vercel.app",
-  "https://devpilot-backend.vercel.app",
-];
+].filter((origin, index, all) => all.indexOf(origin) === index);
 
 const corsOptions = {
   origin(origin, callback) {
@@ -206,6 +216,7 @@ function requireDb(res) {
       error:
         "Database is not connected. Set MONGODB_URI in backend/.env and restart the API.",
     });
+
     return false;
   }
 
@@ -233,7 +244,7 @@ function requireUser(req, res) {
 function safeRepoPart(value) {
   return (
     typeof value === "string" &&
-    /^[A-Za-z0-9_.-]{1,100}$/.test(value) &&
+    /^[A-Za-z0-9\_.-]{1,100}$/.test(value) &&
     value !== "." &&
     value !== ".."
   );
@@ -294,6 +305,7 @@ async function githubFetch(req, path, options = {}) {
     const error = new Error(
       "GitHub rejected your session. Disconnect and reconnect GitHub."
     );
+
     error.status = 401;
     error.githubAuthError = true;
     throw error;
@@ -309,6 +321,7 @@ async function githubFetch(req, path, options = {}) {
     const error = new Error(
       data.message || `GitHub API request failed (${response.status}).`
     );
+
     error.status = response.status;
     throw error;
   }
@@ -352,6 +365,7 @@ async function summarize(prompt) {
     const error = new Error(
       "OPENROUTER_API_KEY is missing from backend/.env"
     );
+
     error.status = 503;
     throw error;
   }
@@ -494,7 +508,10 @@ async function loadCodeContext(req, owner, repo, path) {
 
   if (!Array.isArray(result)) {
     if (result.type !== "file") {
-      const error = new Error("Select a file or a folder containing files.");
+      const error = new Error(
+        "Select a file or a folder containing files."
+      );
+
       error.status = 400;
       throw error;
     }
@@ -503,6 +520,7 @@ async function loadCodeContext(req, owner, repo, path) {
       const error = new Error(
         "This file is too large for one AI request. Select a smaller file."
       );
+
       error.status = 413;
       throw error;
     }
@@ -529,6 +547,7 @@ async function loadCodeContext(req, owner, repo, path) {
     const error = new Error(
       "No supported code files were found in this folder. Select a specific file."
     );
+
     error.status = 400;
     throw error;
   }
@@ -546,7 +565,10 @@ async function loadCodeContext(req, owner, repo, path) {
           content: decodeGitHubFile(file).slice(0, 7000),
         };
       } catch {
-        return { path: item.path, content: "[Unable to load this file]" };
+        return {
+          path: item.path,
+          content: "[Unable to load this file]",
+        };
       }
     })
   );
@@ -579,7 +601,7 @@ app.get("/api/health", (_req, res) => {
 
 app.get("/api/auth/github", (req, res, next) => {
   const clientId = process.env.GITHUB_CLIENT_ID?.trim();
-  const callbackUrl = process.env.GITHUB_CALLBACK_URL?.trim();
+  const callbackUrl = GITHUB_CALLBACK_URL;
 
   if (!clientId || !callbackUrl) {
     return res.status(500).json({
@@ -613,12 +635,8 @@ app.get("/api/auth/github", (req, res, next) => {
 app.get(
   "/api/auth/github/callback",
   asyncRoute(async (req, res) => {
-    const frontendUrl = (
-      process.env.FRONTEND_URL || "http://localhost:5173"
-    )
-      .split(",")[0]
-      .trim()
-      .replace(/\/$/, "");
+    const frontendUrl =
+      FRONTEND_ORIGINS[0] || "http://localhost:5173";
 
     const { code, state, error } = req.query;
 
@@ -630,23 +648,29 @@ app.get(
       );
     }
 
-    // DEBUG LOGS
-    console.log("Session ID cookie received:", req.cookies || req.sessionID);
-    console.log("Session object:", req.session);
-    console.log("Query state:", state);
-    console.log("Session oauthState:", req.session?.oauthState);
+    // Log only non-secret diagnostics. Never log OAuth codes,
+    // tokens, or complete session contents.
+    console.log("GitHub OAuth callback received:", {
+      hasSession: Boolean(req.session),
+      hasSessionId: Boolean(req.sessionID),
+      hasStateParameter: typeof state === "string",
+      hasSavedOAuthState: Boolean(req.session?.oauthState),
+      hasCode: typeof code === "string",
+    });
 
-    // Validate OAuth state to prevent CSRF
+    // Validate OAuth state to prevent CSRF.
     if (
       typeof code !== "string" ||
       typeof state !== "string" ||
       !req.session?.oauthState ||
       state !== req.session.oauthState
     ) {
-      console.error("GitHub OAuth state validation failed.");
+      console.error(
+        "GitHub OAuth state validation failed. The session cookie may be missing or the session store may have changed."
+      );
 
       return res.status(400).send(
-        "Invalid OAuth state. Please restart GitHub sign-in."
+        "GitHub sign-in expired or its session cookie was not received. Use the same localhost hostname throughout sign-in and try again."
       );
     }
 
@@ -658,7 +682,7 @@ app.get(
 
     const clientId = process.env.GITHUB_CLIENT_ID?.trim();
     const clientSecret = process.env.GITHUB_CLIENT_SECRET?.trim();
-    const callbackUrl = process.env.GITHUB_CALLBACK_URL?.trim();
+    const callbackUrl = GITHUB_CALLBACK_URL;
 
     if (!clientId || !clientSecret || !callbackUrl) {
       console.error("GitHub OAuth configuration is incomplete.");
@@ -827,9 +851,9 @@ app.post("/api/auth/logout", (req, res, next) => {
   });
 });
 
-/* --------------------------------------------------
-   GITHUB REPOSITORIES
--------------------------------------------------- */
+// --------------------------------------------------
+// GITHUB REPOSITORIES
+// --------------------------------------------------
 
 app.get(
   "/api/github/repos",
@@ -881,8 +905,11 @@ app.get(
 
     const { owner, repo } = req.params;
     const rawPath = req.query.path;
+
     const path =
-      typeof rawPath === "string" ? rawPath.trim().replace(/^\/+|\/+$/g, "") : "";
+      typeof rawPath === "string"
+        ? rawPath.trim().replace(/^\/+|\/+$/g, "")
+        : "";
 
     if (!validateRepository(owner, repo, res)) return;
 
@@ -944,6 +971,7 @@ app.get(
     if (!requireGitHub(req, res)) return;
 
     const { owner, repo } = req.params;
+
     if (!validateRepository(owner, repo, res)) return;
 
     const data = await githubFetch(
@@ -987,7 +1015,9 @@ app.get(
       !validateRepository(owner, repo, res) ||
       !/^\d+$/.test(number)
     ) {
-      return res.status(400).json({ error: "Invalid pull request path." });
+      return res.status(400).json({
+        error: "Invalid pull request path.",
+      });
     }
 
     const [pr, files] = await Promise.all([
@@ -1034,7 +1064,9 @@ app.post(
       !validateRepository(owner, repo, res) ||
       !/^\d+$/.test(number)
     ) {
-      return res.status(400).json({ error: "Invalid pull request path." });
+      return res.status(400).json({
+        error: "Invalid pull request path.",
+      });
     }
 
     const [pr, files] = await Promise.all([
@@ -1094,7 +1126,8 @@ app.post(
 
     if (confirmed !== true) {
       return res.status(400).json({
-        error: "Explicit confirmation is required before creating a GitHub issue.",
+        error:
+          "Explicit confirmation is required before creating a GitHub issue.",
       });
     }
 
@@ -1226,9 +1259,234 @@ ${question}`
 // --------------------------------------------------
 // GLOBAL ERROR HANDLER
 // --------------------------------------------------
+
+
+/* --------------------------------------------------
+   MEETINGS API — MongoDB
+-------------------------------------------------- */
+
+// Get all meetings for the signed-in user
+app.get(
+  "/api/meetings",
+  asyncRoute(async (req, res) => {
+    if (!requireUser(req, res) || !requireDb(res)) return;
+
+    const userId = req.session.githubUser.id;
+
+    const meetings = await Meeting.find({ userId })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    res.json(meetings);
+  })
+);
+
+// Create a meeting
+app.post(
+  "/api/meetings",
+  asyncRoute(async (req, res) => {
+    if (!requireUser(req, res) || !requireDb(res)) return;
+
+    const { title, notes = "", summary = "", repository = "",
+      decisions = [], actionItems = [] } = req.body || {};
+
+    if (typeof title !== "string" || !title.trim()) {
+      return res.status(400).json({ error: "Meeting title is required." });
+    }
+
+    const meeting = await Meeting.create({
+      userId: req.session.githubUser.id,
+      title: title.trim(),
+      notes: typeof notes === "string" ? notes.slice(0, 20000) : "",
+      summary: typeof summary === "string" ? summary : "",
+      repository: typeof repository === "string" ? repository : "",
+      decisions: Array.isArray(decisions) ? decisions : [],
+      actionItems: Array.isArray(actionItems) ? actionItems : [],
+    });
+
+    res.status(201).json(meeting);
+  })
+);
+
+// Update a meeting
+app.put(
+  "/api/meetings/:id",
+  asyncRoute(async (req, res) => {
+    if (!requireUser(req, res) || !requireDb(res)) return;
+
+    const allowed = [
+      "title", "notes", "summary", "repository",
+      "decisions", "actionItems",
+    ];
+
+    const updates = {};
+
+    for (const key of allowed) {
+      if (req.body?.[key] !== undefined) {
+        updates[key] = req.body[key];
+      }
+    }
+
+    if (typeof updates.title === "string") {
+      updates.title = updates.title.trim();
+      if (!updates.title) {
+        return res.status(400).json({ error: "Meeting title is required." });
+      }
+    }
+
+    const meeting = await Meeting.findOneAndUpdate(
+      { _id: req.params.id, userId: req.session.githubUser.id },
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    if (!meeting) {
+      return res.status(404).json({ error: "Meeting not found." });
+    }
+
+    res.json(meeting);
+  })
+);
+
+// Delete a meeting
+app.delete(
+  "/api/meetings/:id",
+  asyncRoute(async (req, res) => {
+    if (!requireUser(req, res) || !requireDb(res)) return;
+
+    const meeting = await Meeting.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.session.githubUser.id,
+    });
+
+    if (!meeting) {
+      return res.status(404).json({ error: "Meeting not found." });
+    }
+
+    res.json({ success: true, message: "Meeting deleted." });
+  })
+);
+
+
+/* --------------------------------------------------
+   TASKS API — MongoDB
+-------------------------------------------------- */
+
+// Get all tasks for the signed-in user
+app.get(
+  "/api/tasks",
+  asyncRoute(async (req, res) => {
+    if (!requireUser(req, res) || !requireDb(res)) return;
+
+    const tasks = await Task.find({
+      userId: req.session.githubUser.id,
+    })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    res.json(tasks);
+  })
+);
+
+// Create a task
+app.post(
+  "/api/tasks",
+  asyncRoute(async (req, res) => {
+    if (!requireUser(req, res) || !requireDb(res)) return;
+
+    const {
+      title,
+      description = "",
+      status = "todo",
+      source = "manual",
+      repository = "",
+      githubIssueUrl = "",
+      dueDate = "",
+    } = req.body || {};
+
+    if (typeof title !== "string" || !title.trim()) {
+      return res.status(400).json({ error: "Task title is required." });
+    }
+
+    const task = await Task.create({
+      userId: req.session.githubUser.id,
+      title: title.trim(),
+      description,
+      status,
+      source,
+      repository,
+      githubIssueUrl,
+      dueDate,
+    });
+
+    res.status(201).json(task);
+  })
+);
+
+// Update a task
+app.patch(
+  "/api/tasks/:id",
+  asyncRoute(async (req, res) => {
+    if (!requireUser(req, res) || !requireDb(res)) return;
+
+    const allowed = [
+      "title", "description", "status", "source",
+      "repository", "githubIssueUrl", "dueDate",
+    ];
+
+    const updates = {};
+
+    for (const key of allowed) {
+      if (req.body?.[key] !== undefined) {
+        updates[key] = req.body[key];
+      }
+    }
+
+    if (typeof updates.title === "string") {
+      updates.title = updates.title.trim();
+      if (!updates.title) {
+        return res.status(400).json({ error: "Task title is required." });
+      }
+    }
+
+    const task = await Task.findOneAndUpdate(
+      { _id: req.params.id, userId: req.session.githubUser.id },
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    if (!task) {
+      return res.status(404).json({ error: "Task not found." });
+    }
+
+    res.json(task);
+  })
+);
+
+// Delete a task
+app.delete(
+  "/api/tasks/:id",
+  asyncRoute(async (req, res) => {
+    if (!requireUser(req, res) || !requireDb(res)) return;
+
+    const task = await Task.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.session.githubUser.id,
+    });
+
+    if (!task) {
+      return res.status(404).json({ error: "Task not found." });
+    }
+
+    res.json({ success: true, message: "Task deleted." });
+  })
+);
+
 app.use((err, _req, res, _next) => {
   console.error("Unhandled Backend Error:", err);
+
   const status = err.status || 500;
+
   res.status(status).json({
     error: err.message || "An internal server error occurred.",
     githubAuthError: Boolean(err.githubAuthError),
@@ -1238,9 +1496,11 @@ app.use((err, _req, res, _next) => {
 // --------------------------------------------------
 // SERVER INITIALIZATION
 // --------------------------------------------------
+
 if (!process.env.VERCEL) {
   app.listen(PORT, async () => {
     console.log(`DevPilot API running on port ${PORT}`);
+
     if (mongoUri) {
       await connectToDatabase().catch((err) =>
         console.error("MongoDB initial connection error:", err.message)
