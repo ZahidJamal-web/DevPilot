@@ -172,12 +172,14 @@ export default function App() {
 
       if (!data.user) {
         setUser(null);
-        setConnected(true);
-        setEntered(true);
+        setConnected(false);
+        setRepos([]);
+        return;
       }
 
       setUser(data.user);
       setConnected(true);
+      setEntered(true);
 
       const list = await request("/api/github/repos");
       const actualRepos = Array.isArray(list) ? list : list.repos || [];
