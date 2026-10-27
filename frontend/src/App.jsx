@@ -169,6 +169,16 @@ export default function App() {
     setAccountLoading(true);
     try {
       const data = await request("/api/auth/me");
+      console.log("OAuth account response:", {
+        user: data.user?.login,
+        connected: data.connected,
+      });
+
+      console.log("Current UI state:", {
+        entered,
+        connected,
+        user: user?.login,
+      });
 
       if (!data.user || !data.connected) {
         setUser(null);
@@ -180,6 +190,7 @@ export default function App() {
       setUser(data.user);
       setConnected(true);
       setEntered(true);
+      console.log("Dashboard access enabled");
 
       let actualRepos = [];
 
