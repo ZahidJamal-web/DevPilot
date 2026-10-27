@@ -170,7 +170,7 @@ export default function App() {
     try {
       const data = await request("/api/auth/me");
 
-      if (!data.user) {
+      if (!data.user || !data.connected) {
         setUser(null);
         setConnected(false);
         setRepos([]);
@@ -181,8 +181,15 @@ export default function App() {
       setConnected(true);
       setEntered(true);
 
-      const list = await request("/api/github/repos");
-      const actualRepos = Array.isArray(list) ? list : list.repos || [];
+      let actualRepos = [];
+
+      try {
+        const list = await request("/api/github/repos");
+        actualRepos = Array.isArray(list) ? list : list.repos || [];
+      } catch (error) {
+        console.error("Failed to load GitHub repositories:", error);
+        setNotice(`GitHub connected, but repositories failed to load: ${error.message}`);
+      }
 
       setRepos(actualRepos);
 
