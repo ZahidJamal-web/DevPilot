@@ -11,6 +11,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+console.log("DevPilot API URL:", API);
 const enc = (value) => encodeURIComponent(value);
 
 async function request(path, options = {}) {
