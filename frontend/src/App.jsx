@@ -172,7 +172,8 @@ export default function App() {
 
       if (!data.user) {
         setUser(null);
-        setConnected(false);
+        setConnected(true);
+        setEntered(true);
         setRepos([]);
         return;
       }
