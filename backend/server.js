@@ -844,13 +844,6 @@ app.get("/api/auth/me", (req, res) => {
   });
 });
 
-const data = await request("/api/auth/me");
-
-console.log("Production auth check:", {
-  authenticated: Boolean(data.user),
-  user: data.user?.login || data.user?.username || null,
-});
-
 app.post("/api/auth/logout", (req, res, next) => {
   if (!req.session) {
     return res.json({ ok: true });
